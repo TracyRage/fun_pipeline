@@ -1,0 +1,173 @@
+---
+title: "Valuation stable firm"
+subtitle: "Con Ed"
+params:
+  # Trailing EBIT 12M
+  revenues: !!r list(y4=8741, y3=8612, y2=8612, y1=8694, current=8730)
+  ebits: !!r list(y4=2780, y3=2774, y2=2664, y1=2676, current=3007)
+  cash_flows: !!r c(1,2,3,4,5)
+  ebit: 3007
+  rnd_current: 0
+  lease_current: 85
+  # If not US, add country spread
+  riskless_rate: 0.0164
+  risk_premium: 0.0399
+  # Calculate EBIT/paid_interest; check company spread; add to riskless rate
+  # Optionally add country spread
+  cost_debt: 0.0335
+  eff_tax: 0.406
+  # Country marginal tax
+  marginal_tax: 0.23
+  rnd_flows: !!r list(current=0, y1=0, y2=0, y3=0, y4=0, y5=0)
+  current_lease_flows: !!r list(y1=79, y2=77, y3=74, y4=75, y5=75)
+  last_lease_flows: !!r list(y1=78, y2=75, y3=73, y4=72, y5=72)
+  current_beyond: 938
+  last_beyond: 992
+  short_debt: 2063
+  long_debt: 7211
+  equity: 19065
+  goodwill: 446
+  cash: 1272
+  capex: 3936
+  depreciation: 1920
+  inventory: 0
+  acc_recieve: 1701
+  acc_payable: 1475
+  industry_beta: 0.74
+  industry_de: 0.74
+  industry_tax: 0.0974
+  share_out: !!r 343
+  share_price: 76.87
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+pacman::p_load("tidyverse", "fun.valuation")
+```
+
+#### Calculate margins
+```{r}
+margins <- get_margins(revenues = params$revenues,
+                       ebit = params$ebits)
+```
+
+#### Calculate R&D adjustment to EBIT
+```{r}
+amortized_rnd <- get_amortization_3(params$rnd_flows, amortized=TRUE)
+unamortized_rnd <- get_amortization_3(params$rnd_flows, amortized = FALSE)
+rnd_ebit_adj <- rnd_adjustment(current_rnd = params$rnd_current, 
+                               amortized_rnd = amortized_rnd)
+```
+
+#### Calculate lease adjustment to EBIT and capitalize them
+```{r}
+current_cap_leases <- get_leases(lease_flow = params$current_lease_flows,
+                                 beyond = params$current_beyond,
+                                 cost_debt = params$cost_debt)
+
+ebit_lease_adj <- lease_adjustment(current_lease = params$lease_current,
+                                   debt_value_lease = current_cap_leases$debt_value_lease,
+                                   lease_embedded_years = current_cap_leases$years_embedded)
+
+last_cap_leases <- get_leases(lease_flow = params$last_lease_flows,
+                                 beyond = params$last_beyond,
+                                 cost_debt = params$cost_debt)
+```
+
+#### Calculate ROIC
+```{r}
+roic_params <- get_roic(ebit = params$ebit,
+         curr_lease_adj = ebit_lease_adj,
+         rnd_adj = rnd_ebit_adj,
+         eff_tax = params$eff_tax,
+         short_debt = params$short_debt,
+         long_debt = params$long_debt,
+         equity = params$equity,
+         goodwill = params$goodwill,
+         cash = params$cash,
+         last_lease_debt = last_cap_leases$debt_value_lease,
+         rnd_asset = unamortized_rnd)
+```
+> Adjusted ROIC = 6.4%
+
+#### Calculate Net CapEx
+```{r}
+net_capex <- get_net_capex(capex = params$capex,
+                           depreciation = params$depreciation,
+                           rnd_expense = params$rnd_current,
+                           rnd_amortization = amortized_rnd,
+                           lease_last_year = last_cap_leases$debt_value_lease,
+                           lease_current_year = current_cap_leases$debt_value_lease)
+```
+> Net CapEx = 2034
+
+#### Calculate working capital
+```{r}
+working_capital <- get_working_cap(inventory = params$inventory,
+                                   accounts_receive = params$acc_recieve,
+                                   accounts_payable = params$acc_payable)
+```
+> Working capital = 226
+
+#### Calculate reinvestment rate
+```{r}
+reinvestment_rate <- get_rr(net_capex = net_capex$net_capex,
+                            working_capital = working_capital$working_capital,
+                            after_tax_ebit = roic_params$after_tax_ebit)
+```
+> Reinvestment rate = 1.25 (125%)
+
+#### Get growth rate
+```{r}
+growth_rate <- get_stable_growth(reinvestment_rate = reinvestment_rate$reinvestment_rate,
+                                 roic = roic_params$adj_roic/100)
+```
+> Stable growth rate = 0.0803 (8.3%)
+
+#### Calculate bottom-up beta
+```{r}
+firm_beta <- get_beta(average_beta = params$industry_beta,
+                      industry_tax = params$industry_tax,
+                      average_de = params$industry_de,
+                      firm_tax = params$eff_tax,
+                      firm_debt = params$long_debt+params$short_debt,
+                      firm_equity = params$equity)
+```
+> Levered beta = 1.12
+
+#### Calculate Cost of Equity
+```{r}
+cost_equity <- get_cost_equity(risk_free = params$riskless_rate,
+                               beta = firm_beta$levered_beta,
+                               risk_premium = params$risk_premium)
+```
+> Cost of equity = 0.057 (5.7%)
+
+#### Calculate Cost of Capital
+```{r}
+cost_capital <- get_cost_capital(marginal_tax = params$marginal_tax,
+                                 cost_equity = cost_equity$cost_equity,
+                                 cost_debt = params$cost_debt,
+                                 equity = params$equity,
+                                 debt = params$long_debt+params$short_debt+last_cap_leases$debt_value_lease)
+```
+> Cost of capital = 0.0344 (3.4%)
+
+#### Get Price / Value
+```{r}
+final_result <- get_stable_operating_assets(after_tax_ebit = roic_params$after_tax_ebit,
+                                            net_capex = net_capex$net_capex,
+                                            working_capital = working_capital$working_capital,
+                                            wacc = cost_capital$cost_capital,
+                                            growth = growth_rate$stable_growth,
+                                            cash = params$cash,
+                                            debt = params$short_debt+params$long_debt,
+                                            current_share_price = params$share_price,
+                                            share_out = params$share_out)
+```
+> Value / Share = 8.31, Stock price = 76

@@ -1,0 +1,101 @@
+---
+title: "Valuation start-up firm"
+subtitle: "Tesla"
+params:
+  revenue: 26184
+  ebit: 1994
+  revenues: !!r list(y4=5589, y3=8535, y2=17632, y1=19952, current=26184)
+  revenue_trend: !!r list(y1=0.4, y2=0.5, y3=0.40, y4=0.35, y5=0.3, y6=0.25, y7=0.2, y8=0.15, y9=0.15, y10=0.15, terminal=0.1)
+  rnd_flow: !!r list(current=1491, y1=1343, y2=1460, y3=1378, y4=834, y5=717, y6=464, y7=231, y8=273, y9=208, y10=92)
+  industry_beta: 1.05
+  bond_rating: 0.0164
+  risk_premium: 0.0399
+  short_debt: 2132
+  long_debt: 9556
+  shares_out: 1333
+  stock_price: 606
+  cost_debt: 0.111
+  equity: 22225
+  cash: 1886
+  final_margin: 0.14
+  marginal_tax: 0.27
+  industry_sales_cap: 0.74
+  final_beta: 1
+  final_debt_to_capital: 0.74
+  final_cost_debt: 0.03
+  nol: 0
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+pacman::p_load("tidyverse", "fun.valuation")
+```
+
+#### Calculate revenue dynamics (the last 5Y)
+```{r}
+revenue_dynamic <- get_revenue_dynamic(params$revenues)
+```
+
+#### Calculate beta and debt ratio
+```{r}
+risk_params <- get_beta_start_up(beta = params$industry_beta,
+                                 risk_free = params$bond_rating,
+                                 risk_premium = params$risk_premium,
+                                 debt = params$short_debt+params$long_debt,
+                                 shares_out = params$shares_out,
+                                 stock_price = params$stock_price,
+                                 cost_debt = params$cost_debt)
+```
+
+#### Capitalize R&D
+```{r}
+unamortized_rnd <- get_amortization_10(params$rnd_flow, amortized = FALSE)
+```
+
+#### Calculate current year invested capital
+```{r}
+invested_capital <- params$equity + params$cost_debt + params$long_debt + unamortized_rnd - params$cash
+```
+
+#### Calculate current year operating margin
+```{r}
+current_margin <- params$ebit / params$revenue
+```
+
+
+#### Evaluate firm
+```{r}
+evaluate_result <- get_growth_flow(revenue = params$revenue,
+                                   revenue_growth_trend = params$revenue_trend,
+                                   initial_margin = current_margin,
+                                   final_margin = params$final_margin,
+                                   tax_margin = params$marginal_tax,
+                                   ebit = params$ebit,
+                                   nol = params$nol,
+                                   sales_capital_ratio = params$industry_sales_cap,
+                                   current_capital_investment = invested_capital,
+                                   bottom_beta = risk_params$beta,
+                                   terminal_beta = params$final_beta,
+                                   debt_to_capital = risk_params$debt_to_capital,
+                                   target_debt_to_capital = params$final_debt_to_capital,
+                                   debt = params$short_debt+params$long_debt,
+                                   cash = params$cash,
+                                   cost_debt = params$cost_debt,
+                                   target_cost_debt = params$final_cost_debt,
+                                   stock_price = params$stock_price,
+                                   stock_out = params$shares_out,
+                                   option_out = 0,
+                                   risk_free = params$bond_rating,
+                                   risk_premium = params$risk_premium)
+```
+
+
+
+
+
+
